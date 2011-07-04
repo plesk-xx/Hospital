@@ -1,0 +1,2 @@
+DT_STRING  = 0
+DT_INTEGER = 1
