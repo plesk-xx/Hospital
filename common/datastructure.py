@@ -2,7 +2,7 @@
 import sqlite3
 
 class dataStructure():
-   def __init__(self, _dbFile, _tableName, _query=None, _autocommit=False):
+   def __init__(self, _dbFile, _tableName, _query=None):
        self.autocommit = False
 
        self.dbFile     = _dbFile

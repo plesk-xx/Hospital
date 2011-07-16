@@ -8,6 +8,7 @@ from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 
 from common.lib import *
+from common.datastructure import *
 
 class Tab_PersonCommonInfo(QWidget): 
     def __init__(self, parent, personid=None): 
@@ -52,7 +53,9 @@ class Tab_PersonCommonInfo(QWidget):
         self.layout.addRow(u"Дата смерти:",    self.dead     )
         self.setLayout(self.layout)
 
-        self.load(personid)
+        self.ds = dataStructure(os.path.join('db', 'hospital.db'), "person", None if personid is None else "id="+str(personid))
+        self.ds.rec["id"] = personid if personid is not None else 0
+        self.setForm()
 
         self.connect(self.name3, SIGNAL("editingFinished()"), self.action_name3_editingFinished)
 
@@ -66,26 +69,27 @@ class Tab_PersonCommonInfo(QWidget):
     def clear(self):
         pass
 
-    def load(self, personid):
-        if personid is not None:
-           conn = sqlite3.connect(os.path.join('db', 'hospital.db'))
+    def setForm(self):
+        if self.ds.rec["id"] <> 0:
+           self.id.setText(unicode(self.ds.rec["id"]))
+           self.name1.setText(unicode(self.ds.rec["name1"]))
+           self.name2.setText(unicode(self.ds.rec["name2"]))
+           self.name3.setText(unicode(self.ds.rec["name3"]))
+           self.gender.male.setChecked(unicode(self.ds.rec["gender"]) == 'M')
+           self.gender.female.setChecked(unicode(self.ds.rec["gender"]) == 'F')
+           self.bornplace.setText(unicode(self.ds.rec["bornplace"]))
+           self.born.setDate(unicode(self.ds.rec["born"]), '%Y-%m-%d')
+           self.dead.setDate(unicode(self.ds.rec["dead"]), '%Y-%m-%d')
 
-           cur = conn.cursor()
-           cur.execute("SELECT id, ifnull(name1, ''), ifnull(name2, ''), ifnull(name3, ''), gender, ifnull(bornplace, ''), born, dead FROM person WHERE id=?", (personid,))
-
-           for row in cur:
-               self.id.setText(unicode(row[0]))
-               self.name1.setText(unicode(row[1]))
-               self.name2.setText(unicode(row[2]))
-               self.name3.setText(unicode(row[3]))
-               self.gender.male.setChecked(unicode(row[4]) == 'M')
-               self.gender.female.setChecked(unicode(row[4]) == 'F')
-               self.bornplace.setText(unicode(row[5]))
-               self.born.setDate(unicode(row[6]), '%Y-%m-%d')
-               self.dead.setDate(unicode(row[7]), '%Y-%m-%d')
-
-
-           conn.close()
+    def setData(self):
+        self.ds.rec["id"]        = unicode(self.id.text())
+        self.ds.rec["name1"]     = unicode(self.name1.text())
+        self.ds.rec["name2"]     = unicode(self.name2.text())
+        self.ds.rec["name3"]     = unicode(self.name3.text())
+        self.ds.rec["gender"]    = u"M" if self.gender.male.isChecked() else u"F"
+        self.ds.rec["bornplace"] = unicode(self.bornplace.text())
+        self.ds.rec["born"]      = self.born.date.date().toPyDate() if self.born.checkbox.isEnabled() else None
+        self.ds.rec["dead"]      = self.dead.date.date().toPyDate() if self.dead.checkbox.isEnabled() else None
 
     def check(self): 
         if len(unicode(self.name1.text()) + unicode(self.name2.text()) + unicode(self.name3.text())) == 0:
@@ -103,35 +107,8 @@ class Tab_PersonCommonInfo(QWidget):
         return True
 
     def save(self, conn, personid=None): 
-        if self.gender.male.isChecked():
-           gender = 'M'
-        elif self.gender.female.isChecked():
-           gender = 'F'
-
-
-        if personid is None:
-           values = (unicode(self.name1.text()), 
-                     unicode(self.name2.text()), 
-                     unicode(self.name3.text()), 
-                     gender, 
-                     unicode(self.bornplace.toPlainText()), 
-                     self.born.date.date().toPyDate() if self.born.checkbox.isEnabled() else None,
-                     self.dead.date.date().toPyDate() if self.dead.checkbox.isEnabled() else None
-                     )                                                	
-           conn.execute('INSERT INTO person (name1, name2, name3, gender, bornplace, born, dead) VALUES (?,?,?,?,?,?,?)', values)
-        else:
-           values = (unicode(self.name1.text()), 
-                     unicode(self.name2.text()), 
-                     unicode(self.name3.text()), 
-                     gender, 
-                     unicode(self.bornplace.toPlainText()), 
-                     self.born.date.date().toPyDate() if self.born.checkbox.isEnabled() else None,
-                     self.dead.date.date().toPyDate() if self.dead.checkbox.isEnabled() else None,
-                     personid
-                     )                                                	
-           conn.execute('UPDATE person SET name1 = ?, name2 = ?, name3 = ?, gender = ?, bornplace = ?, born = ?, dead = ? WHERE id = ?', values)
-
-        return True
+        self.setData()
+        return self.ds.insert() if personid is None else self.ds.update()
 
 
 class Tab_PersonAddress(QWidget): 
@@ -153,7 +130,9 @@ class Tab_PersonAddress(QWidget):
         self.layout.addRow(u"Фактич. проживания:", self.address_fact )
         self.setLayout(self.layout)
 
-        self.load(personid)
+        self.ds = dataStructure(os.path.join('db', 'hospital.db'), "address", None if personid is None else "personid="+str(personid))
+        self.ds.rec["personid"] = personid if personid is not None else 0
+        self.setForm()
 
         self.connect(self.copy, SIGNAL("clicked()"), self.action_copy)
 
@@ -169,9 +148,14 @@ class Tab_PersonAddress(QWidget):
     def clear(self):
         pass
 
-    def load(self, personid):
-        if personid is not None:
-           pass
+    def setForm(self):
+        if self.ds.rec["personid"] <> 0:
+           self.address_legal.setText(unicode(self.ds.rec["legal"]))
+           self.address_fact.setText(unicode(self.ds.rec["fact"]))
+
+    def setData(self, personid):
+        self.ds.rec["legal"] = unicode(self.address_legal.toPlainText())
+        self.ds.rec["fact"]  = unicode(self.address_fact.toPlainText())
 
     def check(self): 
         return True
