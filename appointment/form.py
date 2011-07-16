@@ -10,6 +10,8 @@ import sqlite3
 from common.lib import *
 from appointment.dict import *
 
+from common.datastructure import *
+
 import datetime
 
 class AppointmentTimePeriod(QComboBox):
@@ -375,67 +377,103 @@ class WindowAppointmentForm(QMainWindow):
 
         self.setWindowTitle(u"Карточка назначения")
 
+        tb = QToolBar(u'Главное');
+        if appointmentid == 0:
+           tb.addAction(QIcon(os.path.join('pic', 'save_32.png')), u'Сохранить', self.saveData)
+        else:
+           tb.addAction(QIcon(os.path.join('pic', 'close_32.png')), u'Сохранить', self.saveData)
+
+        self.addToolBar(tb)
+
+
         self.widget = WidgetAppointment()
         self.status = QString(u"")
+
+        self.ds = dataStructure(os.path.join('db', 'hospital.db'), "appointments")
+                                
         self.initData(appointmentid)
 
-        if not readonly:
+        if appointmentid == 0:
            self.dict   = QDockWidget(QString(u"Справочник назначений"))
            self.dict.setWidget(AppointmentDictListWithSearchLine())
            self.dict.setFeatures(QDockWidget.DockWidgetVerticalTitleBar|QDockWidget.DockWidgetMovable|QDockWidget.DockWidgetFloatable)
 
         self.setCentralWidget(self.widget)
-        if not readonly:
+        if appointmentid == 0:
            self.addDockWidget(Qt.RightDockWidgetArea, self.dict)
 
         self.setStatusBar(QStatusBar())
         self.statusBar().showMessage(self.status)
 
+    def saveData(self):
+        w = self.widget
+        p = w.periodicity
+        m = p.manytimes
+
+        if w.appointment.id == 0:
+           return
+
+        self.ds.rec["personid"]          = 0
+        self.ds.rec["appointmenttypeid"] = w.appointment.id
+        self.ds.rec["dosage"]            = unicode(w.dosage.widget.currentText())
+
+        self.ds.rec["datefrom"] = p.dates.d_from.date().toPyDate()
+        self.ds.rec["datetill"] = p.dates.d_till.date().toPyDate()
+
+        if   p.singly.selected.isChecked():
+           self.ds.rec["type"]   = 0 
+        elif m.widget.by_count.selected.isChecked():
+           self.ds.rec["type"]   = 1 
+           self.ds.rec["count"]  = m.widget.by_count.count.value()
+           self.ds.rec["period"] = m.widget.by_count.period.currentIndex()
+        elif m.widget.by_time.selected.isChecked():
+           self.ds.rec["type"]   = 2 
+           self.ds.rec["count"]  = m.widget.by_time.count.value()
+           self.ds.rec["period"] = m.widget.by_time.period.currentIndex()
+
+        self.ds.rec["comment"] = unicode(w.comment.widget.toPlainText())
+
+        if self.ds.insert():
+           self.ds.commit()
+           self.close()
+
+
     def initData(self, appointmentid):
         if appointmentid == 0:
            self.status = QString(u"Статус назначения: новое")
+           self.ds.rec["id"] = 0
         else:
-           connection = sqlite3.connect(os.path.join('db', 'hospital.db'))
-           cur = connection.cursor()
+           self.ds.query = "id = {0}".format(appointmentid,)
+           if self.ds.getRecord():
+              w = self.widget
+              w.appointment.id = self.ds.rec["appointmenttypeid"]
 
-           query = """SELECT d.id, d.name, a.dosage, a.type, a.datefrom, 
-                             a.datetill, a.count, a.period, a.comment
-                        FROM appointments as a, appointments_dict as d
-                       WHERE d.type = 1
-                         AND a.appointmenttypeid = d.id
-                         AND a.personid = ?""" 
-           cur.execute(query, (appointmentid,))
+              w.appointment.widget.setText(sqlite3.connect(os.path.join('db', 'dictionares.db')).cursor().execute("SELECT name FROM appointments_dict WHERE id = ?", (w.appointment.id, )).fetchone()[0])
+              w.appointment.widget.setDisabled(True)
 
-           for row in cur:
-               w = self.widget
-               w.appointment.id = row["id"]
-               w.appointment.widget.setText(row["name"])
-               w.appointment.widget.setDisabled(True)
+              w.dosage.widget.clear()
+              if self.ds.rec["dosage"] is not None:
+                 w.dosage.widget.addItem(self.ds.rec["dosage"])
+              w.dosage.widget.setDisabled(True)
 
-               w.dosage.widget.clear()
-               if row["dosage"] is not None:
-                  w.dosage.widget.addItem(row["dosage"])
-               w.dosage.widget.setDisabled(True)
+              p = w.periodicity
+              p.dates.d_from.setDateFromString(self.ds.rec["datefrom"], '%Y-%m-%d')
+              p.dates.d_till.setDateFromString(self.ds.rec["datetill"], '%Y-%m-%d')
 
-               p = w.periodicity
-               p.dates.d_from.setDate(row["datefrom"], '%Y-%m-%d')
-               p.dates.d_till.setDate(row["dateyill"], '%Y-%m-%d')
+              p.singly.selected.setChecked(self.ds.rec["type"] == 0)
 
-               p.singly.selected.setChecked(row["type"] == 0)
+              m = p.manytimes
+              m.selected.setChecked(self.ds.rec["type"] <> 0)
 
-               m = p.manytimes
-               m.selected.setChecked(row["type"] <> 0)
+              if   self.ds.rec["type"] == 1:
+                   m.widget.by_count.selected.setChecked(True)
+                   m.widget.by_count.count.setValue(self.ds.rec["count"])
+                   m.widget.by_count.period.setCurrentIndex(self.ds.rec["period"])
+              elif self.ds.rec["type"] == 2:
+                   m.widget.by_time.selected.setChecked(True)
+                   m.widget.by_time.count.setValue(self.ds.rec["count"])
+                   m.widget.by_time.period.setCurrentIndex(self.ds.rec["period"])
 
-               if   row["type"] == 1:
-                    m.widget.by_count.selected(True)
-                    m.widget.by_count.count.setValue(row["count"])
-                    m.widget.by_count.period.setCurrentIndex(row["period"])
-               elif row["type"] == 2:
-                    m.widget.by_time.selected(True)
-                    m.widget.by_time.count.setValue(row["count"])
-                    m.widget.by_time.period.setCurrentIndex(row["period"])
+              w.comment.widget.setText(self.ds.rec["comment"])
 
-               w.comment.widget.setText(row["comment"])
-
-
-           connection.close()
+              w.setDisabled(True)

@@ -37,7 +37,7 @@ class MainWindow(QMainWindow):
         pf.show()
 
     def AppointmentForm(self):
-        af = WindowAppointmentForm(0, self)
+        af = WindowAppointmentForm(1, self)
         af.show()
 
     def AppointmentDictList(self):
